@@ -1,0 +1,18 @@
+[package]
+name = "pharaohdb"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.100"
+redb = "2.0"              
+aes-gcm = "0.10"     
+serde = { version = "1.0", features = ["derive"] }
+thiserror = "1.0"
+rand = "0.8"
+serde_json = "1.0.148"
+
+
+[dev-dependencies]
+criterion = "0.5"         
+tempfile = "3.10"
