@@ -1,4 +1,3 @@
-use rand::random;
 use ::serde::{Deserialize, Serialize};
 use anyhow::{Error, Result};
 // use redb::Value;
@@ -10,15 +9,15 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 use wincode::{SchemaRead, SchemaWrite};
-mod dbtypes;
-use dbtypes::DBTypes;
-mod state;
-use state::*;
+pub mod dbtypes;
+pub use dbtypes::DBTypes;
+pub mod state;
+pub use state::*;
 use uuid::*;
-mod error;
-use error::DbErrors;
+pub mod error;
+pub use error::DbErrors;
 
-#[derive(Deserialize, Serialize, SchemaWrite,SchemaRead)]
+#[derive(Deserialize, Serialize, SchemaWrite, SchemaRead)]
 pub struct TableBuilder {
     pub name: String,
     pub fields: Vec<(String, DBTypes, bool)>,
@@ -26,29 +25,33 @@ pub struct TableBuilder {
 
 #[derive(Deserialize, Serialize, SchemaWrite, SchemaRead)]
 pub struct DbMetaData {
-    name: String,
-    db_id: String,
-    time_stamp: u64,
-    database_version: String,
-    secret_key_fingerprint: String,
-    state: PharaohDBState,
-    schema_registry: HashMap<String, TableBuilder>,
+    pub name: String,
+    pub db_id: String,
+    pub time_stamp: u64,
+    pub database_version: String,
+    pub secret_key_fingerprint: String,
+    pub state: PharaohDBState,
+    pub schema_registry: HashMap<String, TableBuilder>,
 }
 
 impl TableBuilder {
     pub fn new(name: &str) -> Self {
+        let mut primary_field = vec![];
+
+        primary_field.push(("ID".to_string(), DBTypes::Identity, true));
         Self {
             name: name.to_string(),
-            fields: vec![],
+
+            fields: primary_field,
         }
     }
-    // pub fn add_primary_identity_field(&mut self, primary_identity_name:&str) -> &mut Self{
-    //     let random= rand::random::<u64>().to_string();
-    //     let uuid = uuid::Uuid::new_v4().to_string().as_str();
+    pub fn add_primary_identity_field(&mut self) -> &mut Self {
+        let id_string = "ID";
 
-    //     let identity = random  + uuid;
-
-    // }
+        self.fields
+            .push((id_string.to_string(), DBTypes::Identity, true));
+        self
+    }
 
     pub fn add_string_field(&mut self, name: &str, is_unique: bool) -> &mut Self {
         self.fields
@@ -227,10 +230,73 @@ impl PharaohDatabase {
             sync_on_write: true,
         })
     }
-    pub fn create_table(&mut self, builder: TableBuilder) -> Result<&mut Self, Error> {
-           
-        
-        todo!()
+    pub fn create_table(&mut self, builder: TableBuilder) -> Result<&mut Self, DbErrors> {
+        if builder.name.trim().is_empty() {
+            return Err(DbErrors::Tablenamedoesnotexist);
+        }
+
+        if builder.fields.is_empty() {
+            return Err(DbErrors::Atleastonefieldrequired);
+        }
+
+        let mut seen_fields = HashMap::new();
+        let mut identity_count = 0;
+
+        for (field_name, field_type, _) in &builder.fields {
+            if seen_fields.contains_key(field_name) {
+                return Err(DbErrors::Duplicatefieldname);
+            }
+            seen_fields.insert(field_name, true);
+
+            if *field_type == DBTypes::Identity {
+                identity_count += 1;
+            }
+        }
+
+        if identity_count != 1 {
+            return Err(DbErrors::Invalididentityfield);
+        }
+
+        let meta_path = self.path.join("META").join("db.meta");
+        if !meta_path.exists() {
+            return Err(DbErrors::Metadatafiledoesnotexist);
+        }
+
+        let meta_bytes = fs::read(&meta_path).map_err(|_| DbErrors::Cannotreadmetadatafile)?;
+        let mut metadata: DbMetaData =
+            wincode::deserialize(&meta_bytes).map_err(|_| DbErrors::Cannotdeserialize)?;
+
+        if metadata.state != PharaohDBState::Ready {
+            return Err(DbErrors::Databasenotready);
+        }
+
+        if metadata.schema_registry.contains_key(&builder.name) {
+            return Err(DbErrors::Tablealreadyexists);
+        }
+
+        let table_dir = self.path.join("TABLES").join(builder.name.trim());
+
+        if table_dir.exists() {
+            return Err(DbErrors::Tablealreadyexists);
+        }
+
+        fs::create_dir(&table_dir).map_err(|_| DbErrors::Cannotcreatefolder)?;
+
+        let schema_path = table_dir.join("schema.tbl");
+        let schema_bytes = wincode::serialize(&builder).map_err(|_| DbErrors::Cannotserialize)?;
+        fs::write(&schema_path, schema_bytes).map_err(|_| DbErrors::Cannotwritetofile)?;
+
+        let data_path = table_dir.join("data.tbl");
+        File::create(&data_path).map_err(|_| DbErrors::Cannotcreatefile)?;
+
+        metadata
+            .schema_registry
+            .insert(builder.name.clone(), builder);
+
+        let updated_meta = wincode::serialize(&metadata).map_err(|_| DbErrors::Cannotserialize)?;
+        fs::write(&meta_path, updated_meta).map_err(|_| DbErrors::Cannotwritetofile)?;
+
+        Ok(self)
     }
     pub fn _table(self, _table_name: &str) -> Result<&mut Self, Error> {
         todo!()

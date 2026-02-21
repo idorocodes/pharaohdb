@@ -12,9 +12,9 @@ pub enum DbErrors {
     Cannotcreatefolder,
     #[error("Cannot Write to file")]
     Cannotwritetofile,
-    #[error("Cannot convert metadata into bytes")]
+    #[error("Cannot convert into bytes")]
     Cannotserialize,
-    #[error("Cannot convert bytes into metadata")]
+    #[error("Cannot convert into metadata")]
     Cannotdeserialize,
     #[error("Cannot get time")]
     Cannotgettime,
@@ -26,12 +26,24 @@ pub enum DbErrors {
     Walfiledoesnotexist,
     #[error("Unable to read the metadata file")]
     Cannotreadmetadatafile,
-    #[error("TNo database with that name found")]
+    #[error("No database with that name found")]
     Nodbfound,
     #[error("The secret key fingerprint is wrong")]
     Wrongsecret,
     #[error("The database is not ready")]
     Databasenotready,
     #[error("Unable to open file")]
-    Cannotopenfile
+    Cannotopenfile,
+    #[error("Table name does not exist")]
+    Tablenamedoesnotexist,
+    #[error("All tables are required to have at lease one field")]
+    Atleastonefieldrequired,
+    #[error("Field name already specified")]
+    Duplicatefieldname,
+    #[error("Cannot update metadata")]
+    Cannotupdatemetadata,
+    #[error("This field type does not exist")]
+    Invalididentityfield,
+    #[error("This table already exists ")]
+    Tablealreadyexists,
 }
