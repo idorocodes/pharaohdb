@@ -141,6 +141,7 @@ mod tests {
         let meta_bytes = fs::read(&meta_path).unwrap();
         let metadata: DbMetaData = wincode::deserialize(&meta_bytes).unwrap();
         assert!(metadata.schema_registry.contains_key("users"));
+         fs::remove_dir_all("sucess_test").unwrap();
     }
 
     #[test]
