@@ -16,5 +16,6 @@ uuid = { version = "1.18.1", features = ["v4", "serde"] }
 
 
 [dev-dependencies]
-criterion = "0.5"         
+criterion = "0.5"    
+pretty_assertions = {version = "1.4.1"}     
 tempfile = "3.10"
