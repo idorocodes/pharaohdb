@@ -7,7 +7,7 @@ mod tests {
 
     #[test]
     fn test_create_database_success() {
-        let db_name = "test_pharaoh_db";
+        let db_name = "test_db";
         let secret = "super_secret_key";
 
         let _ = fs::remove_dir_all(db_name);
@@ -25,7 +25,7 @@ mod tests {
         assert_eq!(db.path.join("TABLES").exists(),true);
         assert_eq!(db.path.join("INDEXES").exists(),true);
 
-        fs::remove_dir_all(db_name).unwrap();
+        // fs::remove_dir_all(db_name).unwrap();
     }
 
     #[test]

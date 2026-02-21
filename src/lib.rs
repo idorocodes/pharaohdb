@@ -1,14 +1,15 @@
+use rand::random;
 use ::serde::{Deserialize, Serialize};
 use anyhow::{Error, Result};
 // use redb::Value;
 // use serde_json::Value;
 use std::{
     collections::HashMap,
-    fs::{self, File},
+    fs::{self, File, OpenOptions},
     path::PathBuf,
     time::{SystemTime, UNIX_EPOCH},
 };
-use wincode::SchemaWrite;
+use wincode::{SchemaRead, SchemaWrite};
 mod dbtypes;
 use dbtypes::DBTypes;
 mod state;
@@ -17,13 +18,13 @@ use uuid::*;
 mod error;
 use error::DbErrors;
 
-#[derive(Deserialize, Serialize, SchemaWrite)]
+#[derive(Deserialize, Serialize, SchemaWrite,SchemaRead)]
 pub struct TableBuilder {
     pub name: String,
     pub fields: Vec<(String, DBTypes, bool)>,
 }
 
-#[derive(Deserialize, Serialize, SchemaWrite)]
+#[derive(Deserialize, Serialize, SchemaWrite, SchemaRead)]
 pub struct DbMetaData {
     name: String,
     db_id: String,
@@ -41,6 +42,13 @@ impl TableBuilder {
             fields: vec![],
         }
     }
+    // pub fn add_primary_identity_field(&mut self, primary_identity_name:&str) -> &mut Self{
+    //     let random= rand::random::<u64>().to_string();
+    //     let uuid = uuid::Uuid::new_v4().to_string().as_str();
+
+    //     let identity = random  + uuid;
+
+    // }
 
     pub fn add_string_field(&mut self, name: &str, is_unique: bool) -> &mut Self {
         self.fields
@@ -152,10 +160,76 @@ impl PharaohDatabase {
 
         Ok(new_pharaoh_database)
     }
-    pub fn _open(&self, _db_name: &str, _secret_key: &str) -> Result<Self, Error> {
-        todo!()
+    pub fn open(db_name: &str, secret_key: &str) -> Result<Self, DbErrors> {
+        if db_name.trim().is_empty() {
+            return Err(DbErrors::Dbnamenotsupplied);
+        }
+
+        if secret_key.trim().is_empty() {
+            return Err(DbErrors::Secretnotsupplied);
+        }
+
+        let fingerprint = {
+            let bytes = secret_key.as_bytes();
+            let hash: Vec<u8> = bytes.iter().map(|b| b.wrapping_mul(31)).collect();
+            format!("{:x?}", hash)
+        };
+
+        let db = PathBuf::from(db_name);
+
+        if !db.exists() {
+            return Err(DbErrors::Databasedoesnotexist);
+        }
+
+        let metadata_file = db.join("META").join("db.meta");
+        let wal_file = db.join("WAL").join("wal.log");
+
+        if !metadata_file.exists() {
+            return Err(DbErrors::Metadatafiledoesnotexist);
+        }
+
+        if !wal_file.exists() {
+            return Err(DbErrors::Walfiledoesnotexist);
+        }
+        let db_meta_bytes =
+            fs::read(metadata_file).map_err(|_| DbErrors::Cannotreadmetadatafile)?;
+        let meta_file: DbMetaData =
+            wincode::deserialize(&db_meta_bytes).map_err(|_| DbErrors::Cannotdeserialize)?;
+
+        if meta_file.name != db_name.trim() {
+            return Err(DbErrors::Nodbfound);
+        }
+
+        if meta_file.secret_key_fingerprint != fingerprint {
+            return Err(DbErrors::Wrongsecret);
+        }
+
+        if meta_file.state != PharaohDBState::Ready {
+            return Err(DbErrors::Databasenotready);
+        }
+
+        let wal = OpenOptions::new()
+            .read(true)
+            .append(true)
+            .open(wal_file)
+            .map_err(|_| DbErrors::Cannotopenfile)?;
+
+        Ok(Self {
+            name: meta_file.name,
+            path: db,
+            created_at: meta_file.time_stamp,
+            secret_key: secret_key.trim().to_string(),
+            size: 0,
+            log_file: wal,
+            index: HashMap::new(),
+            record_count: 0,
+            next_offset: 0,
+            sync_on_write: true,
+        })
     }
-    pub fn _create_table(&mut self, _builder: TableBuilder) -> Result<&mut Self, Error> {
+    pub fn create_table(&mut self, builder: TableBuilder) -> Result<&mut Self, Error> {
+           
+        
         todo!()
     }
     pub fn _table(self, _table_name: &str) -> Result<&mut Self, Error> {

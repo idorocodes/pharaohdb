@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
-use wincode::SchemaWrite;
+use wincode::{SchemaRead, SchemaWrite};
 
-#[derive(Serialize, Deserialize, SchemaWrite)]
+#[derive(Serialize,PartialEq, Deserialize, SchemaWrite,SchemaRead)]
 pub enum PharaohDBState {
     Creating,
     Ready,
