@@ -6,9 +6,11 @@ use argon2::{
     Argon2,
     password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
 };
+use serde_json::Value;
 use std::{
     collections::HashMap,
     fs::{self, File, OpenOptions},
+    io::Write,
     path::PathBuf,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -16,11 +18,13 @@ use wincode::{SchemaRead, SchemaWrite};
 pub mod dbtypes;
 pub use dbtypes::DBTypes;
 pub mod state;
+use chrono::prelude::*;
 pub use state::*;
 use uuid::*;
 pub mod error;
 pub use error::DbErrors;
 
+type IdentityValue = String;
 #[derive(Deserialize, Serialize, SchemaWrite, SchemaRead)]
 pub struct TableBuilder {
     pub name: String,
@@ -250,7 +254,7 @@ impl PharaohDatabase {
     }
     pub fn create_table(&mut self, builder: TableBuilder) -> Result<&mut Self, DbErrors> {
         if builder.name.trim().is_empty() {
-            return Err(DbErrors::Tablenamedoesnotexist);
+            return Err(DbErrors::Tablenamerequired);
         }
 
         if builder.fields.is_empty() {
@@ -316,13 +320,46 @@ impl PharaohDatabase {
 
         Ok(self)
     }
-    pub fn table(self, _table_name: &str) -> Result<&mut Self, Error> {
-        todo!()
-    }
 
-    pub fn _insert(&mut self) -> Result<Self, Error> {
+    pub fn insert(
+        &mut self,
+        table_name: &str,
+        table_input: Value,
+    ) -> Result<IdentityValue, DbErrors> {
+        if table_name.trim().is_empty() {
+            return Err(DbErrors::Tablenamerequired);
+        }
+
+        let table_dir = self.path.join("TABLES").join(table_name.trim());
+
+        if !table_dir.exists() {
+            return Err(DbErrors::Tablenotfound);
+        }
+
+        let schema_path = table_dir.join("schema.tbl");
+
+        let schema_bytes = fs::read(&schema_path).map_err(|_| DbErrors::Cannotreadfile)?;
+
+        let schema_data: TableBuilder =
+            wincode::deserialize(&schema_bytes).map_err(|_| DbErrors::Cannotdeserialize)?;
+
+        self.validate_insert(&schema_data, &table_input)?;
+        let id = self.next_identity();
+        let row_bytes = self.serialize_row(id.clone(), &table_input)?;
+
+        let data_path = table_dir.join("data.tbl");
+        let mut file = OpenOptions::new()
+            .append(true)
+            .open(data_path)
+            .map_err(|_| DbErrors::Cannotopenfile)?;
+
+        file.write_all(&row_bytes)
+            .map_err(|_| DbErrors::Cannotwritetofile)?;
+
         
-        todo!()
+        self.record_count += 1;
+
+        Ok(id.clone())
     }
 
     pub fn _update(&mut self) -> Result<Self, Error> {
@@ -332,6 +369,60 @@ impl PharaohDatabase {
         todo!()
     }
 
+    fn next_identity(&self) -> IdentityValue {
+        let new_row_id = Uuid::new_v4().to_string();
+
+        let full_id = new_row_id + Utc::now().to_string().as_str();
+
+        full_id
+    }
+
+    fn validate_insert(
+    &self,
+    schema: &TableBuilder,
+    input: &Value,
+) -> Result<(), DbErrors> {
+    let obj = input.as_object()
+        .ok_or(DbErrors::Invalidinputformat)?;
+
+    for (field_name, field_type, _) in &schema.fields {
+        if field_type == &DBTypes::Identity {
+            continue; 
+        }
+
+        if !obj.contains_key(field_name) {
+            return Err(DbErrors::Missingfield(field_name.clone()));
+        }
+    }
+
+    Ok(())
+}
+    
+    fn serialize_row(
+    &self,
+    id: IdentityValue,
+    input: &Value,
+) -> Result<Vec<u8>, DbErrors> {
+    let mut row = HashMap::new();
+    row.insert("ID".to_string(), Value::String(id));
+
+    let obj = input.as_object().unwrap();
+    for (k, v) in obj {
+        row.insert(k.clone(), v.clone());
+    }
+
+    let row_bytes  = serde_json::to_string(&row).map_err(|_|DbErrors::Cannotserialize)?.into_bytes();
+    
+
+    let payload = wincode::serialize(&row_bytes)
+        .map_err(|_| DbErrors::Cannotserialize)?;
+
+    let mut out = Vec::new();
+    out.extend((payload.len() as u32).to_le_bytes());
+    out.extend(payload);
+
+    Ok(out)
+}
     pub fn _delete(&mut self) -> Result<Self, Error> {
         todo!()
     }

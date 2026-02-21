@@ -49,5 +49,16 @@ pub enum DbErrors {
     #[error("Cannot hash the password")]
     Cannothashpasword,
     #[error("Cannot rederive password")]
-    Cannotrederivepassword
+    Cannotrederivepassword,
+    #[error("Table name not supplied")]
+    Tablenamerequired,
+    #[error("Unable to read file")]
+    Cannotreadfile,
+    #[error("Table not found, please create")]
+    Tablenotfound,
+    #[error("Field name does not exist !")]
+    Missingfield(String),
+    #[error("Recheck input, there is a problem with it")]
+    Invalidinputformat
+
 }
