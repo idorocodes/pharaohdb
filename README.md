@@ -10,7 +10,7 @@ It is designed for **high performance**, **simplicity**, and **structured data s
 - Built-in security via per-database secret key
 - Automatic timestamped creation metadata
 - Purely file-based storage (no external server required)
-- Optional sync-on-write for strong durability guarantees
+- sync-on-write for strong durability guarantees
 - Built-in append-only log + in-memory indexing
 - Support for multiple tables per database
 - Capable of handling millions of records efficiently
