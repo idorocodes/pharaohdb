@@ -1,9 +1,8 @@
 #[cfg(test)]
 mod tests {
-    use super::*;
     use pharaohdb::*;
     use pretty_assertions::assert_eq;
-    use std::{fs, thread::{self, sleep}, time};
+    use std::{fs, thread::{self}, time};
 
     #[test]
     fn test_create_database_success() {
@@ -124,8 +123,7 @@ mod tests {
 
     #[test]
     fn test_create_table_success() {
-        let mut db = setup_db();
-
+        let mut db = PharaohDatabase::create("sucess_test".to_string(), "secret").unwrap();
         let table = TableBuilder::new("users")
             .add_string_field("username", true)
             .add_integer_field("age", false)
@@ -147,14 +145,15 @@ mod tests {
 
     #[test]
     fn test_create_table_duplicate_name_fails() {
-        let mut db = setup_db();
-
+        let mut db = PharaohDatabase::create("duplicate".to_string(), "secret").unwrap();
         let table = TableBuilder::new("users_duplicate").build();
         db.create_table(table).unwrap();
 
         let duplicate_table = TableBuilder::new("users_duplicate").build();
         let result = db.create_table(duplicate_table);
         assert!(result.is_err());
+
+        fs::remove_dir_all("duplicate").unwrap();
     }
 
     #[test]
@@ -167,9 +166,6 @@ mod tests {
 
         let result = db.create_table(table);
         assert!(result.is_err());
-
-        let time = time::Duration::from_millis(10000);
-        thread::sleep(time);
          fs::remove_dir_all("test_table_db").unwrap();
     }
     

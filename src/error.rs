@@ -46,4 +46,8 @@ pub enum DbErrors {
     Invalididentityfield,
     #[error("This table already exists ")]
     Tablealreadyexists,
+    #[error("Cannot hash the password")]
+    Cannothashpasword,
+    #[error("Cannot rederive password")]
+    Cannotrederivepassword
 }
