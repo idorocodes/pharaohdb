@@ -2,6 +2,10 @@ use ::serde::{Deserialize, Serialize};
 use anyhow::{Error, Result};
 // use redb::Value;
 // use serde_json::Value;
+use argon2::{
+    Argon2,
+    password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
+};
 use std::{
     collections::HashMap,
     fs::{self, File, OpenOptions},
@@ -115,11 +119,19 @@ impl PharaohDatabase {
         fs::create_dir(&tables_dir).map_err(|_| DbErrors::Cannotcreatefolder)?;
         fs::create_dir(&indexes_dir).map_err(|_| DbErrors::Cannotcreatefolder)?;
 
-        let fingerprint = {
-            let bytes = secret_key.as_bytes();
-            let hash: Vec<u8> = bytes.iter().map(|b| b.wrapping_mul(31)).collect();
-            format!("{:x?}", hash)
-        };
+        // let fingerprint = {
+        //     let bytes = secret_key.as_bytes();
+        //     let hash: Vec<u8> = bytes.iter().map(|b| b.wrapping_mul(31)).collect();
+        //     format!("{:x?}", hash)
+        // };
+
+        let password = secret_key.as_bytes();
+        let salt = SaltString::generate(&mut OsRng);
+        let argon2 = Argon2::default();
+        let password_hash = argon2
+            .hash_password(password, &salt)
+            .map_err(|_| DbErrors::Cannothashpasword)?
+            .to_string();
 
         let meta_path = meta_dir.join("db.meta");
 
@@ -131,7 +143,7 @@ impl PharaohDatabase {
                 .map_err(|_| DbErrors::Cannotgettime)?
                 .as_secs(),
             database_version: "0.0.1".to_string(),
-            secret_key_fingerprint: fingerprint,
+            secret_key_fingerprint: password_hash,
             state: PharaohDBState::Creating,
             schema_registry: HashMap::new(),
         };
@@ -172,11 +184,11 @@ impl PharaohDatabase {
             return Err(DbErrors::Secretnotsupplied);
         }
 
-        let fingerprint = {
-            let bytes = secret_key.as_bytes();
-            let hash: Vec<u8> = bytes.iter().map(|b| b.wrapping_mul(31)).collect();
-            format!("{:x?}", hash)
-        };
+        // let fingerprint = {
+        //     let bytes = secret_key.as_bytes();
+        //     let hash: Vec<u8> = bytes.iter().map(|b| b.wrapping_mul(31)).collect();
+        //     format!("{:x?}", hash)
+        // };
 
         let db = PathBuf::from(db_name);
 
@@ -203,7 +215,13 @@ impl PharaohDatabase {
             return Err(DbErrors::Nodbfound);
         }
 
-        if meta_file.secret_key_fingerprint != fingerprint {
+        let parsed_hash = PasswordHash::new(&meta_file.secret_key_fingerprint)
+            .map_err(|_| DbErrors::Cannotrederivepassword)?;
+
+        if Argon2::default()
+            .verify_password(secret_key.as_bytes(), &parsed_hash)
+            .is_err()
+        {
             return Err(DbErrors::Wrongsecret);
         }
 
@@ -298,11 +316,12 @@ impl PharaohDatabase {
 
         Ok(self)
     }
-    pub fn _table(self, _table_name: &str) -> Result<&mut Self, Error> {
+    pub fn table(self, _table_name: &str) -> Result<&mut Self, Error> {
         todo!()
     }
 
     pub fn _insert(&mut self) -> Result<Self, Error> {
+        
         todo!()
     }
 
