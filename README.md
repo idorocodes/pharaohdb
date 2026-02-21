@@ -41,8 +41,8 @@ use std::error::Error;
 fn main() -> Result<(), Box<dyn Error>> {
     
     let mut db = PharaohDatabase::create(
-        "my_app_db",
-        "super_secret_key_2025",
+        "my_db",
+        "secret_key",
     )?;
 
     /
