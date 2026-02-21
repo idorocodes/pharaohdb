@@ -3,7 +3,7 @@ mod tests {
     use super::*;
     use pharaohdb::*;
     use pretty_assertions::assert_eq;
-    use std::fs;
+    use std::{fs, thread::{self, sleep}, time};
 
     #[test]
     fn test_create_database_success() {
@@ -24,6 +24,8 @@ mod tests {
         assert!(db.path.join("WAL/wal.log").exists());
         assert!(db.path.join("TABLES").exists());
         assert!(db.path.join("INDEXES").exists());
+
+        fs::remove_dir_all(db_name).unwrap();
     }
 
     #[test]
@@ -51,6 +53,7 @@ mod tests {
         assert_eq!(db.record_count, 0);
         assert_eq!(db.sync_on_write, true);
         assert!(db.path.exists());
+        fs::remove_dir_all(db_name).unwrap();
     }
 
     #[test]
@@ -62,6 +65,7 @@ mod tests {
 
         let result = PharaohDatabase::open(db_name, "wrong_secret");
         assert!(result.is_err());
+        fs::remove_dir_all(db_name).unwrap();
     }
 
     #[test]
@@ -85,6 +89,7 @@ mod tests {
 
         let result = PharaohDatabase::open(db_name, secret);
         assert!(result.is_err());
+        fs::remove_dir_all(db_name).unwrap();
     }
 
   
@@ -92,6 +97,7 @@ mod tests {
         let db_name = "test_table_db";
         let _ = fs::remove_dir_all(db_name);
         PharaohDatabase::create(db_name.to_string(), "secret").unwrap()
+        
     }
 
     #[test]
@@ -143,10 +149,10 @@ mod tests {
     fn test_create_table_duplicate_name_fails() {
         let mut db = setup_db();
 
-        let table = TableBuilder::new("users").build();
+        let table = TableBuilder::new("users_duplicate").build();
         db.create_table(table).unwrap();
 
-        let duplicate_table = TableBuilder::new("users").build();
+        let duplicate_table = TableBuilder::new("users_duplicate").build();
         let result = db.create_table(duplicate_table);
         assert!(result.is_err());
     }
@@ -155,11 +161,17 @@ mod tests {
     fn test_create_table_invalid_identity_field_fails() {
         let mut db = setup_db();
 
-        // table with two identity fields
+       
         let mut table = TableBuilder::new("bad_table");
         table.add_primary_identity_field();
 
         let result = db.create_table(table);
         assert!(result.is_err());
+
+        let time = time::Duration::from_millis(10000);
+        thread::sleep(time);
+         fs::remove_dir_all("test_table_db").unwrap();
     }
+    
 }
+
