@@ -1,18 +1,37 @@
+use ::serde::{Deserialize, Serialize};
 use anyhow::{Error, Result};
-use serde_json::Value;
+// use redb::Value;
+// use serde_json::Value;
 use std::{
     collections::HashMap,
     fs::{self, File},
     path::PathBuf,
-    time::SystemTime,
+    time::{SystemTime, UNIX_EPOCH},
 };
+use wincode::SchemaWrite;
 mod dbtypes;
 use dbtypes::DBTypes;
+mod state;
+use state::*;
+use uuid::*;
 mod error;
-use error::DbErros;
-struct TableBuilder {
+use error::DbErrors;
+
+#[derive(Deserialize, Serialize, SchemaWrite)]
+pub struct TableBuilder {
     pub name: String,
     pub fields: Vec<(String, DBTypes, bool)>,
+}
+
+#[derive(Deserialize, Serialize, SchemaWrite)]
+pub struct DbMetaData {
+    name: String,
+    db_id: String,
+    time_stamp: u64,
+    database_version: String,
+    secret_key_fingerprint: String,
+    state: PharaohDBState,
+    schema_registry: HashMap<String, TableBuilder>,
 }
 
 impl TableBuilder {
@@ -25,19 +44,19 @@ impl TableBuilder {
 
     pub fn add_string_field(&mut self, name: &str, is_unique: bool) -> &mut Self {
         self.fields
-            .push((name.to_string(), DBTypes::PharaohString, is_unique));
+            .push((name.to_string(), DBTypes::String, is_unique));
         self
     }
 
     pub fn add_integer_field(&mut self, name: &str, is_unique: bool) -> &mut Self {
         self.fields
-            .push((name.to_string(), DBTypes::PharaohInteger, is_unique));
+            .push((name.to_string(), DBTypes::Integer, is_unique));
         self
     }
 
     pub fn add_boolean_field(&mut self, name: &str, is_unique: bool) -> &mut Self {
         self.fields
-            .push((name.to_string(), DBTypes::PharaohBoolean, is_unique));
+            .push((name.to_string(), DBTypes::Boolean, is_unique));
         self
     }
     pub fn build(&self) -> Self {
@@ -48,86 +67,125 @@ impl TableBuilder {
     }
 }
 
-struct PharaohDatabase {
-    name: String,
-    size: usize,
-    created_at: SystemTime,
-    secret_key: String,
-    path: PathBuf,
-    log_file: File,
-    index: HashMap<Vec<u8>, u64>,
-    next_offset: u64,
-    record_count: u64,
-    sync_on_write: bool,
+pub struct PharaohDatabase {
+    pub name: String,
+    pub size: usize,
+    pub created_at: u64,
+    pub secret_key: String,
+    pub path: PathBuf,
+    pub log_file: File,
+    pub index: HashMap<Vec<u8>, u64>,
+    pub next_offset: u64,
+    pub record_count: u64,
+    pub sync_on_write: bool,
 }
 
 impl PharaohDatabase {
-    pub fn create(&mut self, name: String, secret_key: &str) -> Result<bool, DbErros> {
-        let sucess: bool;
-
+    pub fn create(name: String, secret_key: &str) -> Result<Self, DbErrors> {
         if name.is_empty() {
-            return Err(DbErros::DBNAMENOTSUPPLIED);
+            return Err(DbErrors::Dbnamenotsupplied);
         };
 
-        if secret_key.is_empty() {
-            return Err(DbErros::SECRETNOTSUPPLIED);
+        if secret_key.trim().is_empty() {
+            return Err(DbErrors::Secretnotsupplied);
         }
 
-        let folder_name = format!("./{}", name.trim());
+        let folder = PathBuf::from(name.trim());
 
-        fs::create_dir(&folder_name).map_err(|_| DbErros::CANNOTCREATEFOLDER)?;
+        fs::create_dir(&folder).map_err(|_| DbErrors::Cannotcreatefolder)?;
 
-        self.path = PathBuf::from(folder_name.clone());
+        let meta_dir = folder.join("META");
+        let wal_dir = folder.join("WAL");
+        let tables_dir = folder.join("TABLES");
+        let indexes_dir = folder.join("INDEXES");
 
-        self.name = name;
-        self.created_at = SystemTime::now();
-        self.secret_key = String::from(secret_key.trim());
-        self.size = 0;
+        fs::create_dir(&meta_dir).map_err(|_| DbErrors::Cannotcreatefolder)?;
+        fs::create_dir(&wal_dir).map_err(|_| DbErrors::Cannotcreatefolder)?;
+        fs::create_dir(&tables_dir).map_err(|_| DbErrors::Cannotcreatefolder)?;
+        fs::create_dir(&indexes_dir).map_err(|_| DbErrors::Cannotcreatefolder)?;
 
-        let log_file = File::create_new("db.log").map_err(|_| DbErros::CANNOTCREATEFILE)?;
+        let fingerprint = {
+            let bytes = secret_key.as_bytes();
+            let hash: Vec<u8> = bytes.iter().map(|b| b.wrapping_mul(31)).collect();
+            format!("{:x?}", hash)
+        };
 
-        self.log_file = log_file;
-        self.index = HashMap::new();
-        self.record_count = 0;
-        self.sync_on_write = true;
+        let meta_path = meta_dir.join("db.meta");
 
-        sucess = true;
-        Ok(sucess)
+        let mut metadata = DbMetaData {
+            name: name.clone(),
+            db_id: Uuid::new_v4().to_string(),
+            time_stamp: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_err(|_| DbErrors::Cannotgettime)?
+                .as_secs(),
+            database_version: "0.0.1".to_string(),
+            secret_key_fingerprint: fingerprint,
+            state: PharaohDBState::Creating,
+            schema_registry: HashMap::new(),
+        };
+
+        let meta_bytes = wincode::serialize(&metadata).map_err(|_| DbErrors::Cannotserialize)?;
+        fs::write(&meta_path, meta_bytes).map_err(|_| DbErrors::Cannotwritetofile)?;
+
+        let wal_path = wal_dir.join("wal.log");
+        let wal_file = File::create_new(&wal_path).map_err(|_| DbErrors::Cannotcreatefile)?;
+
+        metadata.state = PharaohDBState::Ready;
+
+        let meta_bytes = wincode::serialize(&metadata).map_err(|_| DbErrors::Cannotserialize)?;
+
+        fs::write(&meta_path, meta_bytes).map_err(|_| DbErrors::Cannotwritetofile)?;
+
+        let new_pharaoh_database = PharaohDatabase {
+            path: folder,
+            name: name.clone(),
+            created_at: metadata.time_stamp,
+            secret_key: String::from(secret_key.trim()),
+            size: 0,
+            log_file: wal_file,
+            index: HashMap::new(),
+            record_count: 0,
+            sync_on_write: true,
+            next_offset: 0,
+        };
+
+        Ok(new_pharaoh_database)
     }
-    pub fn open(&self, db_name: &str, secret_key: &str) -> Result<Self, Error> {
+    pub fn _open(&self, _db_name: &str, _secret_key: &str) -> Result<Self, Error> {
         todo!()
     }
-    pub fn create_table(&mut self, builder: TableBuilder) -> Result<&mut Self, Error> {
+    pub fn _create_table(&mut self, _builder: TableBuilder) -> Result<&mut Self, Error> {
         todo!()
     }
-    pub fn table(self, table_name: &str) -> Result<&mut Self, Error> {
-        todo!()
-    }
-
-    pub fn insert(&mut self, value: Value) -> Result<Self, Error> {
+    pub fn _table(self, _table_name: &str) -> Result<&mut Self, Error> {
         todo!()
     }
 
-    pub fn update(&mut self) -> Result<Self, Error> {
-        todo!()
-    }
-    pub fn delete_all(&mut self) -> Result<Self, Error> {
+    pub fn _insert(&mut self) -> Result<Self, Error> {
         todo!()
     }
 
-    pub fn delete(&mut self) -> Result<Self, Error> {
+    pub fn _update(&mut self) -> Result<Self, Error> {
+        todo!()
+    }
+    pub fn _delete_all(&mut self) -> Result<Self, Error> {
         todo!()
     }
 
-    pub fn commit(&self) {
+    pub fn _delete(&mut self) -> Result<Self, Error> {
         todo!()
     }
 
-    pub fn query(&self) -> Result<(), Error> {
+    pub fn _commit(&self) {
         todo!()
     }
 
-    pub fn query_all(&self) -> Result<(), Error> {
+    pub fn _query(&self) -> Result<(), Error> {
+        todo!()
+    }
+
+    pub fn _query_all(&self) -> Result<(), Error> {
         todo!()
     }
 }

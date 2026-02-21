@@ -1,14 +1,19 @@
 use thiserror::Error;
 
-
-
-#[derive(Error,Debug)]
-pub enum DbErros{
+#[derive(Error, Debug)]
+pub enum DbErrors {
     #[error("Database name is not supplied.!")]
-    DBNAMENOTSUPPLIED,
+    Dbnamenotsupplied,
     #[error("Secret key is not supplied. !")]
-    SECRETNOTSUPPLIED,
+    Secretnotsupplied,
     #[error("Cannot create file!")]
-    CANNOTCREATEFILE,
-    #[error("Cannor create folder")]
-    CANNOTCREATEFOLDER}
+    Cannotcreatefile,
+    #[error("Cannot create folder")]
+    Cannotcreatefolder,
+    #[error("Cannot Write to file")]
+    Cannotwritetofile,
+    #[error("Cannot convert metadata into bytes")]
+    Cannotserialize,
+    #[error("Cannot get time")]
+    Cannotgettime,
+}
