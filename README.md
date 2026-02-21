@@ -43,8 +43,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut db = PharaohDatabase::create(
         "my_app_db",
         "super_secret_key_2025",
-        "./data/my_app_db",
-        true,   
+        "./data/my_app_db",   
     )?;
 
     /
