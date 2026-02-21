@@ -19,9 +19,9 @@ It is designed for **high performance**, **simplicity**, and **structured data s
 
 | Type              | Rust type   | Description                  | Indexed by default |
 |-------------------|-------------|------------------------------|--------------------|
-| `PharaohString`   | `String`    | UTF-8 text                   | Yes (when unique)  |
-| `PharaohInteger`  | `i64`       | 64-bit signed integer        | Yes (when unique)  |
-| `PharaohBoolean`  | `bool`      | Boolean value                | No                 |
+| `String`   | `String`    | UTF-8 text                   | Yes (when unique)  |
+| `Integer`  | `i64`       | 64-bit signed integer        | Yes (when unique)  |
+| `Boolean`  | `bool`      | Boolean value                | No                 |
 
 ## Installation
 
