@@ -34,39 +34,61 @@ cargo build --release
 ## Quick Start
 
 ```rust
-use pharaoh_db::{PharaohDatabase, TableBuilder};
+use pharaohdb::{DbErrors, PharaohDatabase, TableBuilder};
 use serde_json::json;
-use std::error::Error;
 
-fn main() -> Result<(), Box<dyn Error>> {
-    
-    let mut db = PharaohDatabase::create_db(
-        "my_db",
-        "secret_key",
-    )?;
-    
-    db::open("my_db", "secret_key")?;
+fn main() -> Result<(), DbErrors> {
+    let db_name = "test_db";
+    let secret_key = "my&strong&key";
 
-    /
+    
+    let mut  db = PharaohDatabase::create_db(db_name.to_string(), secret_key)?;
+
+  
     let users_table = TableBuilder::new("users")
-        .add_string_field("username", true)   
+        .add_string_field("name", false)
+        .add_boolean_field("is_rust_dev", false)
+        .add_string_field("email", true)
         .add_integer_field("age", false)
-        .add_boolean_field("is_active", false)
         .build();
 
+   
     db.create_table(users_table)?;
 
+    println!("Database and tables created successfully");
 
-    let new_user = json!({
-        "username": "idorocodes",
-        "age": 20,
-        "is_active": true
-    });
 
-    let record_id = db.insert("users", new_user)?;
+    let mut db = PharaohDatabase::open(db_name, secret_key)?;
 
-    println!("Inserted user with internal ID: {}", record_id);
+   
+    let user_id = db.insert(
+        "users",
+        json!({
+            "name": "Idorocodes",
+            "is_rust_dev": true,
+            "email": "idoroyen33@gmail.com",
+            "age": 17
+        }),
+    )?;
 
+    println!("Inserted user with ID: {}", user_id);
+
+    db.update_where("users", "email", 
+    &json!("idoroyen33@gmail.com"),
+     json!({"age":60}))?;
+
+    let results = db.find_where(
+        "users",
+        "email",
+        &json!("idoroyen33@gmail.com"),
+    );
+
+    println!("User age: {:?}", results[0].get("age"));
+
+    let data  = db.find_all("users");
+    println!("{:?}",data);
+
+    
     Ok(())
 }
 ```

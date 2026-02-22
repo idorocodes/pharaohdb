@@ -38,8 +38,7 @@ mod tests {
         db.path.join(rel).exists()
     }
 
-    // ── Database creation & open ─────────────────────────────────────────────
-
+ 
     #[test]
     fn test_create_database_success() {
         let (db, _temp) = setup_db();
@@ -153,11 +152,10 @@ mod tests {
         assert_eq!(t.fields[3].0, "active");
     }
 
-    // ── Create table ─────────────────────────────────────────────────────────
-
+    
     #[test]
     fn test_create_table_success() {
-        let ( db, _temp) = setup_db();
+        let (mut db, _temp) = setup_db();
         db.create_table(make_users_table()).unwrap();
 
         assert!(path_exists(&db, "TABLES/users/schema.tbl"));
@@ -203,8 +201,7 @@ mod tests {
         assert!(db.create_table(t).is_err());
     }
 
-    // ── Insert ───────────────────────────────────────────────────────────────
-
+    
     #[test]
     fn test_insert_success_returns_id() {
         let (mut db, _temp) = setup_db_with_users_table();
@@ -286,7 +283,6 @@ mod tests {
         assert_ne!(id1, id2);
     }
 
-    // ── Find where ───────────────────────────────────────────────────────────
 
     #[test]
     fn test_find_where_returns_matching_record() {
@@ -341,8 +337,6 @@ mod tests {
         let results = db.find_where("users", "name", &json!("Alice"));
         assert!(results[0].get("ID").is_some());
     }
-
-    // ── Update where ─────────────────────────────────────────────────────────
 
     #[test]
     fn test_update_where_changes_field() {
@@ -478,7 +472,6 @@ mod tests {
         assert_eq!(db.find_where("users", "address", &json!("New St")).len(), 2);
     }
 
-    // ── Delete db ────────────────────────────────────────────────────────────
 
     #[test]
     fn test_delete_db_removes_folder() {
@@ -489,7 +482,7 @@ mod tests {
 
         assert!(!path.exists());
        
-
+    }
     
     #[test]
     fn test_index_populated_after_insert() {
@@ -530,8 +523,7 @@ mod tests {
         assert_ne!(old_offset, new_offset);
     }
 
-    // ── End-to-end flow ──────────────────────────────────────────────────────
-
+   
     #[test]
     fn test_full_insert_find_update_find_flow() {
         let (mut db, _temp) = setup_db_with_users_table();
@@ -684,8 +676,7 @@ mod tests {
         assert!(!all[0]["ID"].as_str().unwrap().is_empty());
     }
 
-    // ── delete_where tests ───────────────────────────────────────────────────
-
+  
     #[test]
     fn test_delete_where_removes_record() {
         let (mut db, _temp) = setup_db_with_users_table();
