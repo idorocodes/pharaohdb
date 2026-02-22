@@ -59,6 +59,7 @@ pub enum DbErrors {
     #[error("Field name does not exist !")]
     Missingfield(String),
     #[error("Recheck input, there is a problem with it")]
-    Invalidinputformat
-
+    Invalidinputformat,
+    #[error("Unable to delete te database")]
+    Cannotdeletedatabase,
 }
