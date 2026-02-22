@@ -1,26 +1,26 @@
-use crate::{DbErrors, table_builder::TableBuilder};
-use crate::custom_types::IdentityValue;
-use std::path::PathBuf;
-use std::fs::File;
-use std::collections::HashMap;
+use crate::DBTypes;
 use crate::PharaohDBState;
-use std::io::SeekFrom;
-use std::io::Seek;
-use std::io::Read;
-use std::io::Write;
-use chrono::Utc;
+use crate::custom_types::IdentityValue;
+use crate::metadata::DbMetaData;
+use crate::{DbErrors, table_builder::TableBuilder};
 use argon2::{
     Argon2,
-    password_hash::{PasswordHasher, SaltString, rand_core::OsRng,PasswordHash, PasswordVerifier},
+    password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
 };
+use chrono::Utc;
 use serde_json::Value;
-use crate::metadata::DbMetaData;
-use std::fs::OpenOptions;
-use uuid::Uuid;
+use std::collections::HashMap;
 use std::fs;
-use crate::DBTypes;
+use std::fs::File;
+use std::fs::OpenOptions;
+use std::io::Read;
+use std::io::Seek;
+use std::io::SeekFrom;
+use std::io::Write;
+use std::path::PathBuf;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
+use uuid::Uuid;
 pub struct PharaohDatabase {
     pub name: String,
     pub size: usize,
@@ -34,236 +34,249 @@ pub struct PharaohDatabase {
     pub sync_on_write: bool,
 }
 
-
 impl PharaohDatabase {
     pub fn create_db(name: String, secret_key: &str) -> Result<Self, DbErrors> {
-    if name.is_empty() {
-        return Err(DbErrors::Dbnamenotsupplied);
-    };
+        if name.is_empty() {
+            return Err(DbErrors::Dbnamenotsupplied);
+        };
 
-    if secret_key.trim().is_empty() {
-        return Err(DbErrors::Secretnotsupplied);
-    }
-
-    let folder = PathBuf::from(name.trim());
-
-    fs::create_dir_all(&folder).map_err(|_| DbErrors::Cannotcreatefolder)?;
-
-    let meta_dir = folder.join("META");
-    let wal_dir = folder.join("WAL");
-    let tables_dir = folder.join("TABLES");
-    let indexes_dir = folder.join("INDEXES");
-
-    fs::create_dir_all(&meta_dir).map_err(|_| DbErrors::Cannotcreatefolder)?;
-    fs::create_dir_all(&wal_dir).map_err(|_| DbErrors::Cannotcreatefolder)?;
-    fs::create_dir_all(&tables_dir).map_err(|_| DbErrors::Cannotcreatefolder)?;
-    fs::create_dir_all(&indexes_dir).map_err(|_| DbErrors::Cannotcreatefolder)?;
-
-    // let fingerprint = {
-    //     let bytes = secret_key.as_bytes();
-    //     let hash: Vec<u8> = bytes.iter().map(|b| b.wrapping_mul(31)).collect();
-    //     format!("{:x?}", hash)
-    // };
-
-    let password = secret_key.as_bytes();
-    let salt = SaltString::generate(&mut OsRng);
-    let argon2 = Argon2::default();
-    let password_hash = argon2
-        .hash_password(password, &salt)
-        .map_err(|_| DbErrors::Cannothashpasword)?
-        .to_string();
-
-    let meta_path = meta_dir.join("db.meta");
-
-    let mut metadata = DbMetaData {
-        name: name.clone(),
-        db_id: Uuid::new_v4().to_string(),
-        time_stamp: SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_err(|_| DbErrors::Cannotgettime)?
-            .as_secs(),
-        database_version: "0.0.1".to_string(),
-        secret_key_fingerprint: password_hash,
-        state: PharaohDBState::Creating,
-        schema_registry: HashMap::new(),
-    };
-
-    let meta_bytes = wincode::serialize(&metadata).map_err(|_| DbErrors::Cannotserialize)?;
-    fs::write(&meta_path, meta_bytes).map_err(|_| DbErrors::Cannotwritetofile)?;
-
-    let wal_path = wal_dir.join("wal.log");
-    let wal_file = File::create_new(&wal_path).map_err(|_| DbErrors::Cannotcreatefile)?;
-
-    metadata.state = PharaohDBState::Ready;
-
-    let meta_bytes = wincode::serialize(&metadata).map_err(|_| DbErrors::Cannotserialize)?;
-
-    fs::write(&meta_path, meta_bytes).map_err(|_| DbErrors::Cannotwritetofile)?;
-
-    let new_pharaoh_database = PharaohDatabase {
-        path: folder,
-        name: name.clone(),
-        created_at: metadata.time_stamp,
-        secret_key: String::from(secret_key.trim()),
-        size: 0,
-        log_file: wal_file,
-        index: HashMap::new(),
-        record_count: 0,
-        sync_on_write: true,
-        next_offset: 0,
-    };
-
-    Ok(new_pharaoh_database)
-}
-
-
-
-pub fn open(db_name: &str, secret_key: &str) -> Result<Self, DbErrors> {
-    if db_name.trim().is_empty() {
-        return Err(DbErrors::Dbnamenotsupplied);
-    }
-
-    if secret_key.trim().is_empty() {
-        return Err(DbErrors::Secretnotsupplied);
-    }
-
-    // let fingerprint = {
-    //     let bytes = secret_key.as_bytes();
-    //     let hash: Vec<u8> = bytes.iter().map(|b| b.wrapping_mul(31)).collect();
-    //     format!("{:x?}", hash)
-    // };
-
-    let db = PathBuf::from(db_name);
-
-    if !db.exists() {
-        return Err(DbErrors::Databasedoesnotexist);
-    }
-
-    let metadata_file = db.join("META").join("db.meta");
-    let wal_file = db.join("WAL").join("wal.log");
-
-    if !metadata_file.exists() {
-        return Err(DbErrors::Metadatafiledoesnotexist);
-    }
-
-    if !wal_file.exists() {
-        return Err(DbErrors::Walfiledoesnotexist);
-    }
-    let db_meta_bytes = fs::read(metadata_file).map_err(|_| DbErrors::Cannotreadmetadatafile)?;
-    let meta_file: DbMetaData =
-        wincode::deserialize(&db_meta_bytes).map_err(|_| DbErrors::Cannotdeserialize)?;
-
-    if meta_file.name != db_name.trim() {
-        return Err(DbErrors::Nodbfound);
-    }
-
-    let parsed_hash = PasswordHash::new(&meta_file.secret_key_fingerprint)
-        .map_err(|_| DbErrors::Cannotrederivepassword)?;
-
-    if Argon2::default()
-        .verify_password(secret_key.as_bytes(), &parsed_hash)
-        .is_err()
-    {
-        return Err(DbErrors::Wrongsecret);
-    }
-
-    if meta_file.state != PharaohDBState::Ready {
-        return Err(DbErrors::Databasenotready);
-    }
-
-    let wal = OpenOptions::new()
-        .read(true)
-        .append(true)
-        .open(wal_file)
-        .map_err(|_| DbErrors::Cannotopenfile)?;
-
-    Ok(PharaohDatabase {
-        name: meta_file.name,
-        path: db,
-        created_at: meta_file.time_stamp,
-        secret_key: secret_key.trim().to_string(),
-        size: 0,
-        log_file: wal,
-        index: HashMap::new(),
-        record_count: 0,
-        next_offset: 0,
-        sync_on_write: true,
-    })
-}
-    
-pub fn create_table(
-     &mut self,
-    builder: TableBuilder,
-) -> Result<&mut Self, DbErrors> {
-    if builder.name.trim().is_empty() {
-        return Err(DbErrors::Tablenamerequired); 
-    }
-
-    if builder.fields.is_empty() {
-        return Err(DbErrors::Atleastonefieldrequired);
-    }
-
-    let mut seen_fields = HashMap::new();
-    let mut identity_count = 0;
-
-    for (field_name, field_type, _) in &builder.fields {
-        if seen_fields.contains_key(field_name) {
-            return Err(DbErrors::Duplicatefieldname);
+        if secret_key.trim().is_empty() {
+            return Err(DbErrors::Secretnotsupplied);
         }
-        seen_fields.insert(field_name, true);
 
-        if *field_type == DBTypes::Identity {
-            identity_count += 1;
+        let folder = PathBuf::from(name.trim());
+
+        fs::create_dir_all(&folder).map_err(|_| DbErrors::Cannotcreatefolder)?;
+
+        let meta_dir = folder.join("META");
+        let wal_dir = folder.join("WAL");
+        let tables_dir = folder.join("TABLES");
+        let indexes_dir = folder.join("INDEXES");
+
+        fs::create_dir_all(&meta_dir).map_err(|_| DbErrors::Cannotcreatefolder)?;
+        fs::create_dir_all(&wal_dir).map_err(|_| DbErrors::Cannotcreatefolder)?;
+        fs::create_dir_all(&tables_dir).map_err(|_| DbErrors::Cannotcreatefolder)?;
+        fs::create_dir_all(&indexes_dir).map_err(|_| DbErrors::Cannotcreatefolder)?;
+
+        // let fingerprint = {
+        //     let bytes = secret_key.as_bytes();
+        //     let hash: Vec<u8> = bytes.iter().map(|b| b.wrapping_mul(31)).collect();
+        //     format!("{:x?}", hash)
+        // };
+
+        let password = secret_key.as_bytes();
+        let salt = SaltString::generate(&mut OsRng);
+        let argon2 = Argon2::default();
+        let password_hash = argon2
+            .hash_password(password, &salt)
+            .map_err(|_| DbErrors::Cannothashpasword)?
+            .to_string();
+
+        let meta_path = meta_dir.join("db.meta");
+
+        let mut metadata = DbMetaData {
+            name: name.clone(),
+            db_id: Uuid::new_v4().to_string(),
+            time_stamp: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_err(|_| DbErrors::Cannotgettime)?
+                .as_secs(),
+            database_version: "0.0.1".to_string(),
+            secret_key_fingerprint: password_hash,
+            state: PharaohDBState::Creating,
+            schema_registry: HashMap::new(),
+        };
+
+        let meta_bytes = wincode::serialize(&metadata).map_err(|_| DbErrors::Cannotserialize)?;
+        fs::write(&meta_path, meta_bytes).map_err(|_| DbErrors::Cannotwritetofile)?;
+
+        let wal_path = wal_dir.join("wal.log");
+        let wal_file = OpenOptions::new()
+            .read(true)
+            .create(true)
+            .append(true)
+            .open(wal_path.clone())
+            .map_err(|e| DbErrors::IoError(format!("{}: {}", e.kind(), e)))?;
+
+        metadata.state = PharaohDBState::Ready;
+        OpenOptions::new()
+            .read(true)
+            .create(true)
+            .append(true)
+            .open(meta_path.clone())
+            .map_err(|e| DbErrors::IoError(format!("{}: {}", e.kind(), e)))?;
+
+        let meta_bytes = wincode::serialize(&metadata).map_err(|_| DbErrors::Cannotserialize)?;
+
+        fs::write(&meta_path, meta_bytes).map_err(|_| DbErrors::Cannotwritetofile)?;
+
+        let new_pharaoh_database = PharaohDatabase {
+            path: folder,
+            name: name.clone(),
+            created_at: metadata.time_stamp,
+            secret_key: String::from(secret_key.trim()),
+            size: 0,
+            log_file: wal_file,
+            index: HashMap::new(),
+            record_count: 0,
+            sync_on_write: true,
+            next_offset: 0,
+        };
+
+        Ok(new_pharaoh_database)
+    }
+
+    pub fn open(db_name: &str, secret_key: &str) -> Result<Self, DbErrors> {
+        if db_name.trim().is_empty() {
+            return Err(DbErrors::Dbnamenotsupplied);
         }
+
+        if secret_key.trim().is_empty() {
+            return Err(DbErrors::Secretnotsupplied);
+        }
+
+        // let fingerprint = {
+        //     let bytes = secret_key.as_bytes();
+        //     let hash: Vec<u8> = bytes.iter().map(|b| b.wrapping_mul(31)).collect();
+        //     format!("{:x?}", hash)
+        // };
+
+        let db = PathBuf::from(db_name);
+
+        if !db.exists() {
+            return Err(DbErrors::Databasedoesnotexist);
+        }
+
+        let metadata_file = db.join("META").join("db.meta");
+        let wal_file = db.join("WAL").join("wal.log");
+
+        if !metadata_file.exists() {
+            return Err(DbErrors::Metadatafiledoesnotexist);
+        }
+
+        if !wal_file.exists() {
+            return Err(DbErrors::Walfiledoesnotexist);
+        }
+        let db_meta_bytes =
+            fs::read(metadata_file).map_err(|_| DbErrors::Cannotreadmetadatafile)?;
+        let meta_file: DbMetaData =
+            wincode::deserialize(&db_meta_bytes).map_err(|_| DbErrors::Cannotdeserialize)?;
+
+        if meta_file.name != db_name.trim() {
+            return Err(DbErrors::Nodbfound);
+        }
+
+        let parsed_hash = PasswordHash::new(&meta_file.secret_key_fingerprint)
+            .map_err(|_| DbErrors::Cannotrederivepassword)?;
+
+        if Argon2::default()
+            .verify_password(secret_key.as_bytes(), &parsed_hash)
+            .is_err()
+        {
+            return Err(DbErrors::Wrongsecret);
+        }
+
+        if meta_file.state != PharaohDBState::Ready {
+            return Err(DbErrors::Databasenotready);
+        }
+
+        let wal = OpenOptions::new()
+            .read(true)
+            .append(true)
+            .open(wal_file)
+            .map_err(|_| DbErrors::Cannotopenfile)?;
+
+        Ok(PharaohDatabase {
+            name: meta_file.name,
+            path: db,
+            created_at: meta_file.time_stamp,
+            secret_key: secret_key.trim().to_string(),
+            size: 0,
+            log_file: wal,
+            index: HashMap::new(),
+            record_count: 0,
+            next_offset: 0,
+            sync_on_write: true,
+        })
     }
 
-    if identity_count != 1 {
-        return Err(DbErrors::Invalididentityfield);
+    pub fn create_table(&mut self, builder: TableBuilder) -> Result<&mut Self, DbErrors> {
+        if builder.name.trim().is_empty() {
+            return Err(DbErrors::Tablenamerequired);
+        }
+
+        if builder.fields.is_empty() {
+            return Err(DbErrors::Atleastonefieldrequired);
+        }
+
+        let mut seen_fields = HashMap::new();
+        let mut identity_count = 0;
+
+        for (field_name, field_type, _) in &builder.fields {
+            if seen_fields.contains_key(field_name) {
+                return Err(DbErrors::Duplicatefieldname);
+            }
+            seen_fields.insert(field_name, true);
+
+            if *field_type == DBTypes::Identity {
+                identity_count += 1;
+            }
+        }
+
+        if identity_count != 1 {
+            return Err(DbErrors::Invalididentityfield);
+        }
+
+        let meta_path = self.path.join("META").join("db.meta");
+        if !meta_path.exists() {
+            return Err(DbErrors::Metadatafiledoesnotexist);
+        }
+
+        let meta_bytes = fs::read(&meta_path).map_err(|_| DbErrors::Cannotreadmetadatafile)?;
+        let mut metadata: DbMetaData =
+            wincode::deserialize(&meta_bytes).map_err(|_| DbErrors::Cannotdeserialize)?;
+
+        if metadata.state != PharaohDBState::Ready {
+            return Err(DbErrors::Databasenotready);
+        }
+
+        if metadata.schema_registry.contains_key(&builder.name) {
+            return Err(DbErrors::Tablealreadyexists);
+        }
+
+        let table_dir = self.path.join("TABLES").join(builder.name.trim());
+
+        if table_dir.exists() {
+            return Err(DbErrors::Tablealreadyexists);
+        }
+
+        fs::create_dir(&table_dir).map_err(|_| DbErrors::Cannotcreatefolder)?;
+
+        let schema_path = table_dir.join("schema.tbl");
+        let schema_bytes = wincode::serialize(&builder).map_err(|_| DbErrors::Cannotserialize)?;
+        fs::write(&schema_path, schema_bytes).map_err(|_| DbErrors::Cannotwritetofile)?;
+
+        let data_path = table_dir.join("data.tbl");
+
+        OpenOptions::new()
+        .create(true)
+        .write(true)
+            .read(true)
+            .append(true)
+            .open(data_path)
+            .map_err(|e| DbErrors::IoError(format!("{}: {}", e.kind(), e)))?;
+
+        metadata
+            .schema_registry
+            .insert(builder.name.clone(), builder);
+
+        let updated_meta = wincode::serialize(&metadata).map_err(|_| DbErrors::Cannotserialize)?;
+        fs::write(&meta_path, updated_meta).map_err(|_| DbErrors::Cannotwritetofile)?;
+
+        Ok(self)
     }
 
-    let meta_path = self.path.join("META").join("db.meta");
-    if !meta_path.exists() {
-        return Err(DbErrors::Metadatafiledoesnotexist);
-    }
-
-    let meta_bytes = fs::read(&meta_path).map_err(|_| DbErrors::Cannotreadmetadatafile)?;
-    let mut metadata: DbMetaData =
-        wincode::deserialize(&meta_bytes).map_err(|_| DbErrors::Cannotdeserialize)?;
-
-    if metadata.state != PharaohDBState::Ready {
-        return Err(DbErrors::Databasenotready);
-    }
-
-    if metadata.schema_registry.contains_key(&builder.name) {
-        return Err(DbErrors::Tablealreadyexists);
-    }
-
-    let table_dir = self.path.join("TABLES").join(builder.name.trim());
-
-    if table_dir.exists() {
-        return Err(DbErrors::Tablealreadyexists);
-    }
-
-    fs::create_dir(&table_dir).map_err(|_| DbErrors::Cannotcreatefolder)?;
-
-    let schema_path = table_dir.join("schema.tbl");
-    let schema_bytes = wincode::serialize(&builder).map_err(|_| DbErrors::Cannotserialize)?;
-    fs::write(&schema_path, schema_bytes).map_err(|_| DbErrors::Cannotwritetofile)?;
-
-    let data_path = table_dir.join("data.tbl");
-    File::create(&data_path).map_err(|_| DbErrors::Cannotcreatefile)?;
-
-    metadata
-        .schema_registry
-        .insert(builder.name.clone(), builder);
-
-    let updated_meta = wincode::serialize(&metadata).map_err(|_| DbErrors::Cannotserialize)?;
-    fs::write(&meta_path, updated_meta).map_err(|_| DbErrors::Cannotwritetofile)?;
-
-    Ok(self)
-}
-
- pub fn insert(
+    pub fn insert(
         &mut self,
         table_name: &str,
         table_input: Value,
@@ -291,10 +304,10 @@ pub fn create_table(
 
         let data_path = table_dir.join("data.tbl");
         let mut file = OpenOptions::new()
-            .read(true)
             .append(true)
+            .write(true)
             .open(data_path)
-            .map_err(|_| DbErrors::Cannotopenfile)?;
+            .map_err(|e| DbErrors::IoError(format!("{}: {}", e.kind(), e)))?;
 
         let offset = file
             .seek(SeekFrom::End(0))
@@ -335,6 +348,7 @@ pub fn create_table(
             .read(true)
             .write(true)
             .open(&data_path)
+            
             .map_err(|_| DbErrors::Cannotopenfile)?;
 
         let mut updated_count = 0;
@@ -549,7 +563,6 @@ pub fn create_table(
                 break;
             }
 
-       
             if status[0] == 0x00 {
                 continue;
             }
@@ -564,11 +577,9 @@ pub fn create_table(
                 Err(_) => continue,
             };
 
-        
             results.push(row_value);
         }
 
         results
     }
-
 }
