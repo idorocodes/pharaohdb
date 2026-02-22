@@ -40,10 +40,12 @@ use std::error::Error;
 
 fn main() -> Result<(), Box<dyn Error>> {
     
-    let mut db = PharaohDatabase::create(
+    let mut db = PharaohDatabase::create_db(
         "my_db",
         "secret_key",
     )?;
+    
+    db::open("my_db", "secret_key")?;
 
     /
     let users_table = TableBuilder::new("users")
