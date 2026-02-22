@@ -13,7 +13,6 @@ It is designed for **high performance**, **simplicity**, and **structured data s
 - sync-on-write for strong durability guarantees
 - Built-in append-only log + in-memory indexing
 - Support for multiple tables per database
-- Capable of handling millions of records efficiently
 
 ## Supported Field Types
 
@@ -120,6 +119,17 @@ pub struct TableBuilder {
     fields: Vec<(String, DBTypes, bool)>,   // (name, type, unique)
 }
 ```
+### `Commands`
+
+- **create_db** - Creates the database 
+- **open** - Opens the database 
+- **create_table** - Creates a table
+- **insert** - Inserts a new entry into the db 
+- **find_where** - Find an entry based on a given value
+- **find_all** - Return all the data in the db 
+- **update_where** - Updates an existing data and replace it with a given value
+- **delete_db** - Deletes the database 
+- **delete_where** - Delete an existing data based on a given value
 
 
 Feedback, contributions, and use-cases are very welcome!
