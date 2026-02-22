@@ -47,17 +47,17 @@ impl PharaohDatabase {
 
     let folder = PathBuf::from(name.trim());
 
-    fs::create_dir(&folder).map_err(|_| DbErrors::Cannotcreatefolder)?;
+    fs::create_dir_all(&folder).map_err(|_| DbErrors::Cannotcreatefolder)?;
 
     let meta_dir = folder.join("META");
     let wal_dir = folder.join("WAL");
     let tables_dir = folder.join("TABLES");
     let indexes_dir = folder.join("INDEXES");
 
-    fs::create_dir(&meta_dir).map_err(|_| DbErrors::Cannotcreatefolder)?;
-    fs::create_dir(&wal_dir).map_err(|_| DbErrors::Cannotcreatefolder)?;
-    fs::create_dir(&tables_dir).map_err(|_| DbErrors::Cannotcreatefolder)?;
-    fs::create_dir(&indexes_dir).map_err(|_| DbErrors::Cannotcreatefolder)?;
+    fs::create_dir_all(&meta_dir).map_err(|_| DbErrors::Cannotcreatefolder)?;
+    fs::create_dir_all(&wal_dir).map_err(|_| DbErrors::Cannotcreatefolder)?;
+    fs::create_dir_all(&tables_dir).map_err(|_| DbErrors::Cannotcreatefolder)?;
+    fs::create_dir_all(&indexes_dir).map_err(|_| DbErrors::Cannotcreatefolder)?;
 
     // let fingerprint = {
     //     let bytes = secret_key.as_bytes();

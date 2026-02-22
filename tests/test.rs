@@ -70,8 +70,7 @@ mod tests {
         cleanup(&name);
     }
 
-    // ── database open ─────────────────────────────────────────────────────────
-
+   
     #[test]
     fn test_open_database_success() {
         let name = unique_db("open_success");
@@ -335,7 +334,6 @@ mod tests {
         cleanup(&name);
     }
 
-    // ── update_where ──────────────────────────────────────────────────────────
 
     #[test]
     fn test_update_where_changes_field() {
