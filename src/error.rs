@@ -62,4 +62,6 @@ pub enum DbErrors {
     Invalidinputformat,
     #[error("Unable to delete te database")]
     Cannotdeletedatabase,
+    #[error("io error")]
+    IoError(String)
 }
