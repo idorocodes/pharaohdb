@@ -1,5 +1,5 @@
 
-# Pharaoh 
+# Pharaoh Db
 
 ![Rust](https://img.shields.io/badge/rust-stable-brightgreen.svg)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
