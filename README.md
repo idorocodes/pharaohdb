@@ -1,5 +1,9 @@
 
-# Pharaoh DB
+# Pharaoh 
+
+![Rust](https://img.shields.io/badge/rust-stable-brightgreen.svg)
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)
 
 **Pharaoh DB** is a lightweight, embedded, file-based database management system written in Rust and encrypted with Egyptian Hieroglyph.  
 It is designed for **high performance**, **simplicity**, and **structured data storage** in applications that require local, secure, and efficient persistence without external dependencies.
