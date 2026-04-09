@@ -34,16 +34,23 @@ cargo build --release
 
 ```rust
 use pharaohdb::{DbErrors, PharaohDatabase, TableBuilder};
+use serde::{Deserialize, Serialize};
 use serde_json::json;
+
+#[derive(Deserialize, Serialize, Debug)]
+struct User {
+    name: String,
+    is_rust_dev: bool,
+    email: String,
+    age: i32,
+}
 
 fn main() -> Result<(), DbErrors> {
     let db_name = "test_db";
     let secret_key = "my&strong&key";
 
-    
-    let mut  db = PharaohDatabase::create_db(db_name.to_string(), secret_key)?;
+    let mut db = PharaohDatabase::create_db(db_name.to_string(), secret_key)?;
 
-  
     let users_table = TableBuilder::new("users")
         .add_string_field("name", false)
         .add_boolean_field("is_rust_dev", false)
@@ -51,43 +58,53 @@ fn main() -> Result<(), DbErrors> {
         .add_integer_field("age", false)
         .build();
 
-   
-    db.create_table(users_table)?;
+    // Use a clean match to handle existing tables
+    if let Err(e) = db.create_table(users_table) {
+        if !matches!(e, DbErrors::Tablealreadyexists) {
+            return Err(e);
+        }
+    }
 
-    println!("Database and tables created successfully");
+    let my_user = User {
+        name: "Idorocodes".into(),
+        is_rust_dev: true,
+        email: "idoroyen33@gmail.com".into(),
+        age: 17,
+    };
 
+    let email_to_find = my_user.email.clone();
+    let existing = db.find_where("users", "email", &json!(email_to_find));
 
-    let mut db = PharaohDatabase::open(db_name, secret_key)?;
+    if existing.is_empty() {
+        let user_id = db.insert("users", serde_json::to_value(my_user).unwrap())?;
+        println!("Inserted new user with ID: {}", user_id);
+    } else {
+        println!("User already exists, skipping insertion.");
+    }
 
-   
-    let user_id = db.insert(
-        "users",
-        json!({
-            "name": "Idorocodes",
-            "is_rust_dev": true,
-            "email": "idoroyen33@gmail.com",
-            "age": 17
-        }),
-    )?;
+    db.update_where("users", "email", &json!(email_to_find), json!({"age": 60}))?;
 
-    println!("Inserted user with ID: {}", user_id);
+    let results = db.find_where("users", "email", &json!(email_to_find));
 
-    db.update_where("users", "email", 
-    &json!("idoroyen33@gmail.com"),
-     json!({"age":60}))?;
+    let user: User = serde_json::from_value(results[0].clone()).expect("Failed to deserialize");
 
-    let results = db.find_where(
+    println!("User data is: {:?}", user);
+
+    db.delete_where(
         "users",
         "email",
-        &json!("idoroyen33@gmail.com"),
-    );
+        &serde_json::to_value("alice@rust.org").unwrap(),
+    )?;
 
-    println!("User age: {:?}", results[0].get("age"));
+  
+    let data = db.find_all("users");
 
-    let data  = db.find_all("users");
-    println!("{:?}",data);
+   
+    let all_users: Vec<User> =
+        serde_json::from_value(json!(data)).expect("Database data didn't match User struct");
 
-    
+    println!("Total records in table: {}", all_users.len());
+    println!("{:#?}", all_users);
     Ok(())
 }
 ```
