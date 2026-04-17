@@ -29,7 +29,7 @@ It is designed for **high performance**, **simplicity**, and **structured data s
 ## Installation
 
 ```bash
-git clone https://github.com/idorocodes/pharaoh-db.git
+git clone https://github.com/idorocodes/pharaohdb.git
 cd pharaoh-db
 cargo build --release
 ```
